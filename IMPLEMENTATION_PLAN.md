@@ -152,9 +152,10 @@ Operator enters message → JS starts loop:
 | Endpoint | Method | Purpose | Status |
 |---|---|---|---|
 | `GET /dialogs/messages/{op_id}:{contact_id}?omit={n}&select={n}` | GET | Load message thread | ✅ Confirmed |
-| `GET /…/{contact_id}` | GET | Contact profile | ⏳ Full path pending |
+| `GET /users/private/{op_id}` | GET | Operator's **own** profile (session check, not contact data) | ✅ Confirmed — not for contact list |
+| `GET /users/private/{contact_id}` or `GET /users/{contact_id}` | GET | Individual contact profile | ⏳ Path pattern pending |
 | `GET /…/unseen` (candidate) | GET | Unread message count | ⏳ Screenshot pending |
-| Contact list / inbox endpoint | GET | Full conversation list | ⏳ Screenshot pending |
+| **Contact list / inbox endpoint** | GET | Full conversation list | ⏳ **BLOCKING** — screenshot needed |
 | Send message endpoint | POST | Send a message | 🔒 Deferred — do not implement yet |
 | `POST /annals/{op_id}/chat-opened` | POST | Analytics write — **skip** | ✅ Confirmed useless |
 | `GET /v2/dialogs/cheers/{op}:{contact}/vibration/check` | GET | Cheers feature — **skip** | ✅ Confirmed useless |

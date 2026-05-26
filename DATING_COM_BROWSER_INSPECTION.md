@@ -125,9 +125,15 @@ After login, navigate to the inbox or chat list page.
 
 Click on one contact to open their chat. Watch Network tab.
 
+- [x] **Operator self-profile endpoint confirmed (NOT contact profile):**  
+  `GET https://api.dating.com/users/private/210860604`  
+  - Returns the **logged-in operator's own account data**, not a contact's data.  
+  - Useful for: verifying session validity, reading operator's own profile fields.  
+  - **Not useful for CRM contact list or per-contact info.**
+
 - [ ] **Full endpoint URL for loading a single contact's profile:**  
   `_______________________________________`  
-  *(Partial observed: `https://api.dating.com/…/40486930031` — full base path pending screenshot)*
+  *(Pattern `/users/private/{contact_id}` or `/users/{contact_id}` — pending screenshot)*
 
 - [ ] **HTTP method:** ☐ GET  ☐ POST
 
@@ -162,7 +168,7 @@ With a chat open, watch the Network tab for the message history request.
 
 - [x] **HTTP method:** GET
 
-- [x] **Response format:** JSON array
+- [x] **Response format:** JSON array ✅ confirmed
 
 - [x] **Confirmed message fields:**
 
@@ -181,6 +187,9 @@ With a chat open, watch the Network tab for the message history request.
 - [x] **Direction logic:**  
   `sender == 210860604` → operator/model sent the message (outbound)  
   `sender == 40486930031` → contact sent the message (inbound)
+
+- [x] **Note:** The `/users/private/210860604` endpoint seen firing alongside messages belongs  
+  to **Section 4 (operator self-profile), not message history**. Do not confuse with contact data.
 
 - [ ] **Are message poll/refresh requests visible?** (auto-check for new messages)  
   ☑ Candidate: `unseen` endpoint fires on page load — pending screenshot  
@@ -272,23 +281,30 @@ Confirmed API base: https://api.dating.com
 Confirmed operator user ID: 210860604
 Confirmed contact user ID observed: 40486930031
 
+Operator self-profile (confirmed — useful for session check, NOT contact list):
+  GET /users/private/210860604
+  Returns: logged-in operator's own account data only.
+
 Messages endpoint (confirmed):
   GET /dialogs/messages/210860604:40486930031?omit=0&select=50
   Response: JSON array
   Fields: id, sender, recipient, status, timestamp, read, meta, text, tag
   Direction: compare sender to operator ID
 
-Analytics endpoints (confirmed — skip):
+Analytics endpoints (confirmed — skip entirely):
   POST /annals/210860604/chat-opened
   GET  /v2/dialogs/cheers/210860604:40486930031/vibration/check
   All /annals/ and /events/ URLs
 
-Still needed:
+Still needed (BLOCKING implementation):
+  - Section 3: contact list / inbox endpoint — fires on page load before any chat
+    is opened. This is the last blocker before Step 3 of implementation can begin.
+
+Still needed (non-blocking):
   - Section 1: login flow, captcha presence, session mechanism
-  - Section 3: contact list / inbox endpoint (fires on page load)
-  - Section 4: full profile endpoint URL + response fields
+  - Section 4: full contact profile endpoint URL + response fields
   - Section 7: protection headers (Cloudflare/Akamai?)
-  - Section 6: send message endpoint (deferred — implement last)
+  - Section 6: send message endpoint (deferred — implement last, separate task)
 ```
 
 ---
