@@ -12,6 +12,9 @@ if ( ! defined( '_S_VERSION' ) ) {
 	define( '_S_VERSION', '1.0.0' );
 }
 
+// Dating.com adapter — Phase 1 scaffold (read-only, no auth yet).
+require_once get_template_directory() . '/dating-com-functions.php';
+
 /**
  * Sets up theme defaults and registers support for various WordPress features.
  *
@@ -289,6 +292,11 @@ function get_cookie_file($id) {
 	$id_model = get_field('id_model', $id);
 	$upload_dir = wp_upload_dir();
 	$cookie_dir = $upload_dir['basedir'] . '/cookies/';
+	// Dating.com sessions use a separate prefixed file to avoid ID collisions.
+	// RC keeps its existing naming so active sessions are never invalidated.
+	if ( get_field('source_model', $id) === 'dating_com' ) {
+		return $cookie_dir . 'cookie_dating_com_' . $id_model . '.txt';
+	}
 	return $cookie_dir . 'cookie_' . $id_model . '.txt';
 }
 
@@ -369,6 +377,12 @@ function handle_get_contact_list() {
 			wp_send_json_error('Missing or invalid ID');
 	}
 
+	// Source routing — Dating.com shows pending state until endpoint is confirmed.
+	if ( get_field('source_model', $id) === 'dating_com' ) {
+		dc_handle_get_contact_list( $id );
+		return;
+	}
+
 	$target_url = 'https://login.romancecompass.com/chat/';
 	$headers = get_common_headers();
 	$result = make_authenticated_request($id, $target_url, $headers);
@@ -439,6 +453,11 @@ function handle_toggle_favorite() {
 			wp_send_json_error('Неверные данные');
 	}
 
+	// Dating.com: favorites endpoint not yet confirmed — not implemented in Phase 1.
+	if ( get_field('source_model', intval($_POST['id'])) === 'dating_com' ) {
+		wp_send_json_error('Dating.com: избранное не поддерживается в текущей версии.');
+	}
+
 	$user_id = intval($_POST['user_id']);
 	$favorite = ($_POST['favorite'] === '1') ? 1 : 0;
 	$id = intval($_POST['id']);
@@ -475,6 +494,11 @@ function handle_delete_contact() {
 			wp_send_json_error('Неверные данные');
 	}
 
+	// Dating.com: delete-contact endpoint not yet confirmed — not implemented in Phase 1.
+	if ( get_field('source_model', intval($_POST['id'])) === 'dating_com' ) {
+		wp_send_json_error('Dating.com: удаление контактов не поддерживается в текущей версии.');
+	}
+
 	$user_id = intval($_POST['user_id']);
 	$id = intval($_POST['id']);
 
@@ -509,6 +533,12 @@ function handle_open_chat() {
 	$user_id = intval($_POST['user_id']);
 	$chat_id = intval($_POST['chat_id']);
 	$id = intval($_POST['id']);
+
+	// Source routing — uses confirmed /dialogs/messages/ endpoint for Dating.com.
+	if ( get_field('source_model', $id) === 'dating_com' ) {
+		dc_handle_open_chat( $id, $user_id );
+		return;
+	}
 	$headers = get_common_headers();
 
 	// Fetch user info
@@ -627,6 +657,16 @@ function handle_send_message() {
 			wp_send_json_error('Неверные данные');
 	}
 
+	// Dating.com: send message deferred — endpoint not yet confirmed.
+	// TODO: implement dc_send_message() after confirming Section 6 of
+	//       DATING_COM_BROWSER_INSPECTION.md, then route here.
+	if ( get_field('source_model', intval($_POST['id'])) === 'dating_com' ) {
+		wp_send_json_error(
+			'Dating.com: отправка сообщений будет доступна после подтверждения endpoint. ' .
+			'(See DATING_COM_BROWSER_INSPECTION.md Section 6)'
+		);
+	}
+
 	$user_id = intval($_POST['user_id']);
 	$message = $_POST['message'];
 	$id = intval($_POST['id']);
@@ -684,6 +724,12 @@ function handle_check_message() {
 	$user_id = intval($_POST['user_id']);
 	$chat_id = intval($_POST['chat_id']);
 	$id = intval($_POST['id']);
+
+	// Source routing — uses confirmed /dialogs/messages/ endpoint for Dating.com.
+	if ( get_field('source_model', $id) === 'dating_com' ) {
+		dc_handle_check_message( $id, $user_id );
+		return;
+	}
 	$headers = get_common_headers();
 	$html = '<div class="chat-messages" data-chat_id="' . esc_attr($chat_id) . '" data-user_id="' . $user_id . '">';
 
@@ -762,6 +808,11 @@ function handle_get_online_users() {
 	$id = intval($_POST['id']);
 	$page = intval($_POST['page']);
 
+	// Dating.com: broadcast / mass outreach is explicitly not supported.
+	if ( get_field('source_model', $id) === 'dating_com' ) {
+		wp_send_json_error('Dating.com: рассылка недоступна.');
+	}
+
 	$headers = get_common_headers();
 	$url_info = 'https://login.romancecompass.com/chat/?ajax=1&action=get_online&page_num=' . $page . '&clear_invited=0';
 	$result = make_authenticated_request($id, $url_info, $headers);
@@ -807,6 +858,11 @@ function handle_send_message_to_user() {
 	$id = intval($_POST['id']);
 	$user_id = intval($_POST['user_id']);
 	$message = trim($_POST['message']);
+
+	// Dating.com: broadcast / mass outreach is explicitly not supported.
+	if ( get_field('source_model', $id) === 'dating_com' ) {
+		wp_send_json_error('Dating.com: рассылка недоступна.');
+	}
 
 	$headers = get_common_headers();
 	$send_url = 'https://login.romancecompass.com/chat/?ajax=1&action=send_message&c_id=' . $user_id . '&message=' . urlencode($message);
@@ -884,6 +940,9 @@ function load_more_models_callback() {
 					$class = '';
 					$btn = '<a target="_blank" href="' . esc_url(get_permalink()) . '">Работать с моделью</a>';
 				}
+				$src         = get_field('source_model') ?: 'romance_compass';
+				$badge_label = $src === 'dating_com' ? 'Dating.com' : 'RomanceCompass';
+				$badge_class = $src === 'dating_com' ? 'badge-dating' : 'badge-rc';
 				?>
             <div class="model-item p-4 rounded <?= $class; ?>">
                 <div class="d-flex gap-3">
@@ -893,6 +952,7 @@ function load_more_models_callback() {
                     <div class="info">
                         <h6 class="title"><?= esc_html(get_field('name_model')); ?>
                             <span class="id" style="color: #0000005c;">(ID: <?= esc_html(get_field('id_model')); ?>)</span>
+                            <span class="source-badge <?= esc_attr($badge_class); ?>"><?= esc_html($badge_label); ?></span>
                         </h6>
                         <p class="subtitle mt-1 mb-1">
                             Страна: <span style="font-weight: bold;color: rgba(0,0,0,0.7);"><?= esc_html(get_field('country_model')); ?></span> |

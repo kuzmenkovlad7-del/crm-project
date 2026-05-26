@@ -249,6 +249,9 @@ if ( !is_user_logged_in() ) : ?>
 							$class = '';
 							$btn = '<a target="_blank" href="' . esc_url(get_permalink()) . '">Работать с моделью</a>';
 						}
+						$src         = get_field('source_model') ?: 'romance_compass';
+						$badge_label = $src === 'dating_com' ? 'Dating.com' : 'RomanceCompass';
+						$badge_class = $src === 'dating_com' ? 'badge-dating' : 'badge-rc';
 						?>
 								<div class="model-item p-4 rounded <?= $class; ?>">
 										<div class="d-flex gap-3">
@@ -258,6 +261,7 @@ if ( !is_user_logged_in() ) : ?>
 												<div class="info">
 														<h6 class="title"><?= esc_html(get_field('name_model')); ?>
 																<span class="id" style="color: #0000005c;">(ID: <?= esc_html(get_field('id_model')); ?>)</span>
+																<span class="source-badge <?= esc_attr($badge_class); ?>"><?= esc_html($badge_label); ?></span>
 														</h6>
 														<p class="subtitle mt-1 mb-1">
 																Страна: <span style="font-weight: bold;color: rgba(0,0,0,0.7);"><?= esc_html(get_field('country_model')); ?></span> |
@@ -359,14 +363,22 @@ if ( !is_user_logged_in() ) : ?>
 						</div>
 					</div>
 					<div class="actions pt-4 pb-4 ps-3 pe-3 rounded" style="box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;max-height: 380px;height: auto;">
+						<?php
+						$model_source       = get_field('source_model') ?: 'romance_compass';
+						$contact_list_label = $model_source === 'dating_com'
+							? 'Список контактов — Dating.com'
+							: 'Список контактов';
+						?>
 						<div class="contact-list mb-3">
-							<h6 class="text-center p-2 bg-secondary bg-gradient text-white">Список контактов</h6>
+							<h6 class="text-center p-2 bg-secondary bg-gradient text-white"><?= esc_html($contact_list_label); ?></h6>
 							<div class="response">
 								<p class="text-center">Авторизация...</p>
 							</div>
 						</div>
 						<div class="buttons">
+						<?php if ( $model_source !== 'dating_com' ) : ?>
 						<button id="goSpam" class="btn btn-outline-primary" style="margin: auto;display: block;">Рассылка</button>
+						<?php endif; ?>
 						</div>
 					</div>
 				</div>
