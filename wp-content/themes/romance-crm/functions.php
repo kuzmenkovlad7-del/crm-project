@@ -977,6 +977,10 @@ function handle_action_spam() {
 		wp_send_json_error('Неверные данные');
 	}
 	$id = intval($_POST['id']);
+
+	if ( get_field( 'source_model', $id ) === 'dating_com' ) {
+		wp_send_json_error( 'Рассылка недоступна для Dating.com.' );
+	}
 	$type = $_POST['type'];
 
 	if($type == 'start') {
