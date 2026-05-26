@@ -481,13 +481,19 @@ function dc_render_sync_panel( $id ) {
 	</div>
 
 	<script>
-	jQuery(function($){
+	document.addEventListener('DOMContentLoaded', function(){
 		// Config values injected by PHP via wp_json_encode — never concatenated as raw strings.
 		var cfg = <?= $cfg_json; ?>;
 		// JSON.stringify produces safely quoted JS string literals for W, M, T.
 		var W = JSON.stringify(cfg.ajax_url);
 		var M = JSON.stringify(cfg.model_id);
 		var T = JSON.stringify(cfg.token);
+
+		var elLink   = document.getElementById('dc-bookmarklet-link');
+		var elCode   = document.getElementById('dc-bm-code');
+		var elCopy   = document.getElementById('dc-copy-bookmarklet');
+		var elRefresh = document.getElementById('dc-refresh-contacts');
+		var elStatus = document.getElementById('dc-sync-status');
 
 		// Build the entire bookmarklet in JavaScript.
 		// Single-quotes inside these double-quoted JS strings need no escaping.
@@ -545,53 +551,49 @@ function dc_render_sync_panel( $id ) {
 			+ "});"
 			+ "})();";
 
-		$('#dc-bookmarklet-link').attr('href', 'javascript:' + encodeURIComponent(code));
-		$('#dc-bm-code').val(code);
+		elLink.href = 'javascript:' + encodeURIComponent(code);
+		elCode.value = code;
 
-		$('#dc-copy-bookmarklet').on('click', function(){
-			var bm = $('#dc-bm-code').val();
+		function copyFallback() {
+			elCode.select();
+			try {
+				document.execCommand('copy');
+				elStatus.textContent = 'Код скопирован (запасной метод).';
+			} catch(e) {
+				elStatus.textContent = 'Не удалось скопировать автоматически. Выделите код вручную (Ctrl+A в поле).';
+			}
+		}
+
+		elCopy.addEventListener('click', function(){
+			var bm = elCode.value;
 			if (navigator.clipboard && navigator.clipboard.writeText) {
 				navigator.clipboard.writeText(bm).then(function(){
-					$('#dc-sync-status').text('Код скопирован. Вставьте в консоль Dating.com (F12 > Console > Enter).');
-				}).catch(function(){
-					$('#dc-bm-code').select();
-					try {
-						document.execCommand('copy');
-						$('#dc-sync-status').text('Код скопирован (запасной метод).');
-					} catch(e) {
-						$('#dc-sync-status').text('Не удалось скопировать автоматически. Выделите код вручную (Ctrl+A в поле).');
-					}
-				});
+					elStatus.textContent = 'Код скопирован. Вставьте в консоль Dating.com (F12 > Console > Enter).';
+				}).catch(copyFallback);
 			} else {
-				$('#dc-bm-code').select();
-				try {
-					document.execCommand('copy');
-					$('#dc-sync-status').text('Код скопирован (запасной метод).');
-				} catch(e) {
-					$('#dc-sync-status').text('Не удалось скопировать автоматически. Выделите код вручную (Ctrl+A в поле).');
-				}
+				copyFallback();
 			}
 		});
 
-		$('#dc-refresh-contacts').on('click', function(){
-			$('#dc-sync-status').text('Обновление...');
-			$.ajax({
-				url: ajaxurl,
-				type: 'POST',
-				dataType: 'json',
-				data: { action: 'get_contact_list', id: modelId },
-				success: function(r){
+		elRefresh.addEventListener('click', function(){
+			elStatus.textContent = 'Обновление...';
+			var fd = new FormData();
+			fd.append('action', 'get_contact_list');
+			fd.append('id', cfg.model_id);
+			fetch(cfg.ajax_url, {method: 'POST', body: fd})
+				.then(function(r){ return r.json(); })
+				.then(function(r){
+					var el = document.querySelector('.contact-list .response');
 					if (r.success) {
-						$('.contact-list .response').html(r.data);
-						$('#dc-sync-status').text('Контакты обновлены.');
+						if (el) el.innerHTML = r.data;
+						elStatus.textContent = 'Контакты обновлены.';
 					} else {
-						$('#dc-sync-status').text('Ошибка: ' + r.data);
+						elStatus.textContent = 'Ошибка: ' + r.data;
 					}
-				},
-				error: function(){
-					$('#dc-sync-status').text('AJAX-ошибка при обновлении контактов.');
-				}
-			});
+				})
+				.catch(function(){
+					elStatus.textContent = 'Ошибка при обновлении контактов.';
+				});
 		});
 	});
 	</script>
