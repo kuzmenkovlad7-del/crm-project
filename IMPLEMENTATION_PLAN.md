@@ -3,7 +3,8 @@
 **Project:** crmrc.app (WordPress CRM for dating-platform operators)  
 **Task:** Add Dating.com as a second source alongside RomanceCompass  
 **Date:** 2026-05-25  
-**Status:** Plan — no code changed yet
+**Status:** Plan updated after partial browser inspection — no code changed yet  
+**API confirmed:** `https://api.dating.com` — clean REST JSON, Path B viable pending login flow confirmation
 
 ---
 
@@ -140,26 +141,125 @@ Operator enters message → JS starts loop:
 
 ## 5. Safest Way to Add Dating.com as a Source
 
-### Why the RC approach can't be blindly copied
+### What browser inspection confirmed
 
-RomanceCompass (`login.romancecompass.com`) is a **purpose-built operator/studio portal** — it expects programmatic login and has JSON AJAX endpoints that are documented or at least stable. Its authentication at the login page accepts form-encoded credentials with no captcha for studio accounts.
+**API base:** `https://api.dating.com` — REST JSON API, clean and structured.  
+**Path direction:** Leaning **Path B** (operator's own session credentials, cookie-based, mirrors RC approach).  
+**Blocker remaining:** Login flow (Section 1 of checklist) must be confirmed before server-side auth is coded.
 
-Dating.com is a **consumer dating site**. Its public login page may use:
-- CSRF tokens that change per request
-- Fingerprinting / bot detection
-- Captcha on repeated logins
-- 2FA for accounts
+### Confirmed endpoint map (from browser inspection)
 
-**Therefore, before any server-side integration can be coded, a dating.com operator account must be manually inspected** to determine whether:
+| Endpoint | Method | Purpose | Status |
+|---|---|---|---|
+| `GET /dialogs/messages/{op_id}:{contact_id}?omit={n}&select={n}` | GET | Load message thread | ✅ Confirmed |
+| `GET /…/{contact_id}` | GET | Contact profile | ⏳ Full path pending |
+| `GET /…/unseen` (candidate) | GET | Unread message count | ⏳ Screenshot pending |
+| Contact list / inbox endpoint | GET | Full conversation list | ⏳ Screenshot pending |
+| Send message endpoint | POST | Send a message | 🔒 Deferred — do not implement yet |
+| `POST /annals/{op_id}/chat-opened` | POST | Analytics write — **skip** | ✅ Confirmed useless |
+| `GET /v2/dialogs/cheers/{op}:{contact}/vibration/check` | GET | Cheers feature — **skip** | ✅ Confirmed useless |
+| All `/annals/` and `/events/` URLs | — | Analytics only — **skip** | ✅ Confirmed useless |
 
-**Path A — Official/Partner API exists:**  
-Dating.com (part of Various Inc.) operates a B2B partner/studio program. If the client has an operator account with API access, the integration mirrors the RC approach using the official documented endpoints.
+### Message fields confirmed
 
-**Path B — Studio portal without documented API:**  
-If dating.com provides an operator web portal (like `studio.dating.com` or `operator.dating.com`) that has the same type of JSON AJAX endpoints as RC's `/chat/?ajax=1&action=...`, we can inspect those endpoints using browser DevTools while the operator is normally logged in, then implement the same cookie-based approach as RC — **only if** that portal has no captcha or bot protection on server-side login.
+```json
+{
+  "id":        "...",
+  "sender":    210860604,
+  "recipient": 40486930031,
+  "status":    "...",
+  "timestamp": "...",
+  "read":      true,
+  "meta":      {},
+  "text":      "...",
+  "tag":       "..."
+}
+```
 
-**Path C (Backup — Safe fallback, no server-side requests to dating.com):**  
-If neither Path A nor B is available without bypassing protections, the integration uses **manual or semi-automated operator entry** — the operator uses dating.com in their own browser and pastes contact data into CRM. See Section 7.
+**Direction logic:** `sender == operator_id` → outbound (model sent); `sender == contact_id` → inbound (contact sent).
+
+### 7-point implementation approach
+
+The following is the exact scope of what will be implemented, in order:
+
+#### 1. `source_model` ACF field
+
+Add a Select field to the `model` post type:
+- Key: `source_model`
+- Choices: `romance_compass` (default) / `dating_com`
+- Required, with `romance_compass` pre-set on all existing models
+
+No existing model is affected until an operator explicitly switches it.
+
+#### 2. Source badge in the UI
+
+Model list card and model detail page both show a coloured badge:
+- "RomanceCompass" — green (`#e8f4e8 / #2d6a2d`)
+- "Dating.com" — pink (`#fce8f3 / #8b1a5a`)
+
+CSS added to `main.css`. PHP badge logic added to `index.php` model card and detail header.
+
+#### 3. Cookie / session isolation by source
+
+`get_cookie_file()` (`functions.php:288`) updated to prefix cookie filenames with the source slug:
+
+```
+cookie_romance_compass_{id_model}.txt   ← RC (renamed from current cookie_{id}.txt)
+cookie_dating_com_{id_model}.txt        ← new Dating.com sessions
+```
+
+This prevents session files colliding when the same numeric model ID exists on both platforms.
+
+#### 4. Dating.com adapter file
+
+New file: `wp-content/themes/romance-crm/dating-com-functions.php`
+
+Contains Dating.com-specific versions of every RC helper, all prefixed `dc_`:
+
+| Function | RC equivalent | Purpose |
+|---|---|---|
+| `dc_authenticate($id, $cookie_file)` | `authenticate()` | POST login to dating.com |
+| `dc_get_common_headers()` | `get_common_headers()` | HTTP headers for api.dating.com |
+| `dc_make_authenticated_request()` | (inline in handlers) | cURL + re-auth on session expiry |
+| `dc_get_contact_list($id)` | `handle_get_contact_list()` | Fetch inbox/conversation list |
+| `dc_open_chat($id, $contact_id)` | `handle_open_chat()` | Fetch profile + messages |
+| `dc_check_messages($id, $op_id, $contact_id)` | `handle_check_message()` | Poll for new messages |
+
+All functions in this file are **read-only** with respect to Dating.com. No writes until send endpoint is separately confirmed.
+
+#### 5. Read-only contact list + open chat + check messages
+
+Three AJAX handlers in `functions.php` gain a source check at the top and delegate to the `dc_` functions:
+
+- `handle_get_contact_list()` — delegates to `dc_get_contact_list()`
+- `handle_open_chat()` — delegates to `dc_open_chat()`
+- `handle_check_message()` — delegates to `dc_check_messages()`
+
+The RC code path inside each handler is **unchanged** — the delegation only fires when `source_model === 'dating_com'`.
+
+The contact card HTML returned for Dating.com contacts will include:
+- Name, contact ID, online status, unread count (once contact list endpoint is confirmed)
+- Link/button to open the chat modal
+- A `data-source="dating_com"` attribute so JS can distinguish if needed
+
+#### 6. Broadcast (`#goSpam`) hidden for Dating.com
+
+In `index.php` model detail section (line ~369), the "Рассылка" button is conditionally hidden:
+
+```php
+<?php if (get_field('source_model') !== 'dating_com'): ?>
+  <button id="goSpam" class="btn btn-outline-primary" style="margin: auto;display: block;">Рассылка</button>
+<?php endif; ?>
+```
+
+The `handle_get_online_users()` and `handle_send_message_to_user()` AJAX handlers will also return an error if called with a `dating_com` model ID, as a server-side safety net.
+
+#### 7. Send message — deferred until endpoint is separately confirmed
+
+`handle_send_message()` will **not** be modified in the initial implementation.  
+The Dating.com send endpoint, its required POST fields, and any CSRF/token requirements must be confirmed via browser inspection (checklist Section 6) before this is touched.
+
+When confirmed, `dc_send_message($id, $contact_id, $message)` will be added to `dating-com-functions.php` and `handle_send_message()` will gain the same source-routing delegation as the read handlers above.
 
 ---
 
@@ -331,11 +431,11 @@ All changes are additive:
 - **Expected:** Bootstrap modal shows contact info and message history from dating.com.
 - **Pass criteria:** Modal appears with correct name, messages, layout.
 
-#### TC-06 — Send message (dating.com)
+#### TC-06 — Send message (dating.com) — DEFERRED
 
-- In the open chat modal, type and send a message.
-- **Expected:** Message sends to dating.com contact; chat refreshes; new message appears.
-- **Pass criteria:** `send_message` returns success; `wp_action_logs` entry created.
+- **Status:** Not implemented in initial scope. Send endpoint not yet confirmed.
+- Will be added as a separate task once checklist Section 6 is filled.
+- **Expected (when implemented):** Message sends to dating.com contact; chat refreshes; new message appears; `wp_action_logs` entry created.
 
 #### TC-07 — Broadcast hidden or gated for dating.com
 
@@ -363,43 +463,71 @@ All changes are additive:
 - **Expected:** Contact list shows a clear error message, not a blank page or PHP fatal.
 - **Pass criteria:** Error HTML rendered in `.contact-list .response`; no stack trace exposed.
 
+#### TC-11 — Broadcast button absent for Dating.com model
+
+- Open the dating.com test model page.
+- **Expected:** No `#goSpam` button visible.
+- **Pass criteria:** Button absent from DOM; direct AJAX call to `get_online_users` with a dating_com model ID returns a server-side error (not RC data).
+
+#### TC-12 — Cookie file naming does not collide
+
+- Create an RC model and a Dating.com model that both have `id_model = 100`.
+- Trigger auth for both.
+- **Pass criteria:** Two distinct files: `cookie_romance_compass_100.txt` and `cookie_dating_com_100.txt`; neither overwrites the other.
+
 ---
 
 ## Implementation Order
 
 ```
-Step 0  (Pre-code) Research
-         → Manually inspect dating.com operator portal in browser DevTools
-         → Determine Path A, B, or C
-         → Document the exact login URL, form fields, session check pattern,
-           and all AJAX endpoint URLs needed
+Step 0  BLOCKED — complete browser inspection first
+         → Confirm login flow (checklist Section 1):
+             login URL, POST target, form fields, captcha presence, session mechanism
+         → Confirm contact list endpoint (checklist Section 3):
+             URL, method, response fields
+         → Confirm full profile endpoint path (checklist Section 4)
+         → Confirm unseen/unread endpoint (checklist Section 5 / Section 3)
+         Code starts only when Step 0 is complete.
 
-Step 1  ACF field
-         → Add source_model field via ACF admin or acf-json export
-         → Set default = romance_compass for all existing models
+Step 1  ACF field  [SAFE — no risk to existing models]
+         → Add source_model Select field via ACF admin or acf-json export
+         → Default = romance_compass; apply to all existing models
 
-Step 2  dating-com-functions.php
-         → dc_authenticate(), dc_get_common_headers(), dc_get_contact_list(),
-           dc_open_chat(), dc_send_message(), dc_check_message(),
-           dc_get_online_users(), dc_send_message_to_user()
-         → Mirror the RC function signatures exactly
+Step 2  main.css — source badge styles  [SAFE — additive CSS only]
+         → .source-badge, .badge-rc, .badge-dating
 
-Step 3  functions.php — source routing
-         → Require dating-com-functions.php
-         → Fix get_cookie_file() to include source prefix
-         → Add source check + delegation in each AJAX handler
+Step 3  index.php — source badge + hide broadcast for Dating.com  [LOW RISK]
+         → Add badge to model list card and model detail header
+         → Conditionally hide #goSpam for dating_com source
+         → RC models completely unaffected
 
-Step 4  index.php — source badge + conditional broadcast button
+Step 4  functions.php — cookie prefix + server-side broadcast guard  [LOW RISK]
+         → Update get_cookie_file() to prefix with source slug
+         → Add error return in handle_get_online_users() and
+           handle_send_message_to_user() if source == dating_com
 
-Step 5  main.css — badge styles
+Step 5  dating-com-functions.php — new adapter file  [NEW FILE — no risk to existing code]
+         → dc_authenticate()
+         → dc_get_common_headers()
+         → dc_make_authenticated_request()
+         → dc_get_contact_list()   ← needs contact list endpoint from Step 0
+         → dc_open_chat()          ← needs profile endpoint from Step 0
+         → dc_check_messages()     ← uses confirmed /dialogs/messages/ endpoint
+         → dc_send_message()       PLACEHOLDER ONLY — not connected to any handler
 
-Step 6  Test TC-01 through TC-10
+Step 6  functions.php — source routing in read-only handlers
+         → require dating-com-functions.php
+         → handle_get_contact_list(): add source check → dc_get_contact_list()
+         → handle_open_chat(): add source check → dc_open_chat()
+         → handle_check_message(): add source check → dc_check_messages()
+         → handle_send_message(): NO CHANGE — deferred to Step 8
 
-Step 7  If Path C is needed instead:
-         → Create wp_dc_contacts table (dbDelta on plugin activation)
-         → Build bookmarklet JS + handle_dc_import_contact() endpoint
-         → Add manual entry form to index.php model detail section
-         → Re-run TC-01, TC-02, TC-03 (adapted for manual data)
+Step 7  Test TC-01 through TC-09 (send excluded)
+
+Step 8  SEPARATE TASK — Send message for Dating.com
+         → Requires: checklist Section 6 filled and reviewed
+         → Implement dc_send_message() + route handle_send_message()
+         → Re-run TC-06
 ```
 
 ---
