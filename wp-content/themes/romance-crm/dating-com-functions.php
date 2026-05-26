@@ -445,10 +445,9 @@ function dc_render_sync_panel( $id ) {
 
 		<ol class="dc-sync-steps mb-3">
 			<li>Откройте <a href="https://dating.com" target="_blank" rel="noopener">Dating.com</a> в <strong>этом же браузере</strong> и войдите в аккаунт модели.</li>
-			<li>Откройте <strong>1–10 нужных диалогов</strong> — просто кликните по каждому, чтобы браузер загрузил историю сообщений.</li>
-			<li><strong>Перетащите кнопку ниже</strong> в панель закладок браузера. Или нажмите «Скопировать код» и вставьте в консоль (F12 → Console) на сайте Dating.com.</li>
-			<li>Находясь на сайте Dating.com — нажмите закладку или выполните код в консоли.</li>
-			<li>После сообщения «синхронизировано» — нажмите <strong>«Обновить контакты»</strong> ниже.</li>
+			<li><strong>Сначала запустите DC Sync</strong> — перетащите кнопку ниже в панель закладок и нажмите её, или скопируйте код и вставьте в консоль (F12 → Console). Дождитесь сообщения «DC Sync включён».</li>
+			<li>После активации — откройте <strong>1–10 нужных диалогов</strong> на Dating.com. Помощник автоматически перехватит и импортирует каждый чат.</li>
+			<li>Вернитесь в CRM и нажмите <strong>«Обновить контакты»</strong> ниже.</li>
 		</ol>
 
 		<div class="d-flex gap-2 flex-wrap mb-2 align-items-center">
@@ -482,73 +481,114 @@ function dc_render_sync_panel( $id ) {
 
 	<script>
 	document.addEventListener('DOMContentLoaded', function(){
-		// Config values injected by PHP via wp_json_encode — never concatenated as raw strings.
 		var cfg = <?= $cfg_json; ?>;
-		// JSON.stringify produces safely quoted JS string literals for W, M, T.
 		var W = JSON.stringify(cfg.ajax_url);
 		var M = JSON.stringify(cfg.model_id);
 		var T = JSON.stringify(cfg.token);
 
-		var elLink   = document.getElementById('dc-bookmarklet-link');
-		var elCode   = document.getElementById('dc-bm-code');
-		var elCopy   = document.getElementById('dc-copy-bookmarklet');
+		var elLink    = document.getElementById('dc-bookmarklet-link');
+		var elCode    = document.getElementById('dc-bm-code');
+		var elCopy    = document.getElementById('dc-copy-bookmarklet');
 		var elRefresh = document.getElementById('dc-refresh-contacts');
-		var elStatus = document.getElementById('dc-sync-status');
+		var elStatus  = document.getElementById('dc-sync-status');
 
-		// Build the entire bookmarklet in JavaScript.
-		// Single-quotes inside these double-quoted JS strings need no escaping.
-		// \\n inside a JS double-quoted string becomes \n in the string value,
-		// which is the JS newline escape inside the bookmarklet's alert() calls.
-		var code = "(function(){"
-			+ "var W="+W+",M="+M+",T="+T+";"
-			+ "var e=performance.getEntriesByType?performance.getEntriesByType('resource'):[];"
-			+ "var s={},p=[];"
-			+ "for(var i=0;i<e.length;i++){"
-			+   "var x=e[i].name.match(/api\\.dating\\.com\\/dialogs\\/messages\\/(\\d+):(\\d+)/);"
-			+   "if(x&&!s[x[1]+':'+x[2]]){s[x[1]+':'+x[2]]=1;p.push({o:x[1],c:x[2]});}"
-			+ "}"
-			+ "if(!p.length){"
-			+   "alert('DC Sync: Не найдено диалогов с api.dating.com.\\nОткройте 1–10 чатов на Dating.com и повторите.');"
-			+   "return;"
-			+ "}"
-			+ "var tot=p.length,done=0,errs=0;"
-			+ "p.forEach(function(pr){"
-			+   "fetch('https://api.dating.com/dialogs/messages/'+pr.o+':'+pr.c+'?omit=0&select=50',"
-			+         "{credentials:'include',headers:{'Accept':'application/json'}})"
-			+   ".then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})"
-			+   ".then(function(msgs){"
-			+     "if(!Array.isArray(msgs))throw new Error('bad_resp');"
-			+     "var safe=msgs.map(function(m){"
-			+       "return{id:+(m.id||0),sender:''+(m.sender||''),recipient:''+(m.recipient||''),"
-			+             "timestamp:+(m.timestamp||0),read:m.read?1:0,"
-			+             "text:(''+(m.text||'')).substring(0,2000),"
-			+             "tag:''+(m.tag||''),status:''+(m.status||'')};"
-			+     "});"
-			+     "var fd=new FormData();"
-			+     "fd.append('action','dc_import_messages');"
-			+     "fd.append('token',T);"
-			+     "fd.append('model_id',M);"
-			+     "fd.append('operator_id',pr.o);"
-			+     "fd.append('contact_id',pr.c);"
-			+     "fd.append('messages',JSON.stringify(safe));"
-			+     "return fetch(W,{method:'POST',body:fd});"
-			+   "})"
-			+   ".then(function(r){return r.json();})"
-			+   ".then(function(){"
-			+     "done++;"
-			+     "if(done+errs===tot){"
-			+       "alert('DC Sync: синхронизировано '+done+' из '+tot"
-			+             "+(errs?' (ошибок: '+errs+')':'')"
-			+             "+'.\\nВернитесь в CRM и нажмите «Обновить контакты».');"
-			+     "}"
-			+   "})"
-			+   ".catch(function(err){"
-			+     "errs++;console.error('DC Sync ('+pr.c+'):',err);"
-			+     "if(done+errs===tot){"
-			+       "alert('DC Sync: '+done+'/'+tot+' ок. Ошибок: '+errs+'. F12 → Console.');"
-			+     "}"
+		// ── Helper: send sanitized message array to CRM import endpoint ──────────
+		// Defined as a JS string fragment reused in both interceptor and fallback.
+		// snd(o, c, msgs): o=operator_id string, c=contact_id string, msgs=array
+		var sndFn = ""
+			+ "function snd(o,c,msgs){"
+			+   "if(!Array.isArray(msgs))return;"
+			+   "var safe=msgs.map(function(m){"
+			+     "return{id:+(m.id||0),sender:''+(m.sender||''),recipient:''+(m.recipient||''),"
+			+           "timestamp:+(m.timestamp||0),read:m.read?1:0,"
+			+           "text:(''+(m.text||'')).substring(0,2000),"
+			+           "tag:''+(m.tag||''),status:''+(m.status||'')};"
 			+   "});"
-			+ "});"
+			+   "var fd=new FormData();"
+			+   "fd.append('action','dc_import_messages');"
+			+   "fd.append('token',T);"
+			+   "fd.append('model_id',M);"
+			+   "fd.append('operator_id',o);"
+			+   "fd.append('contact_id',c);"
+			+   "fd.append('messages',JSON.stringify(safe));"
+			+   "fetch(W,{method:'POST',body:fd})"
+			+   ".then(function(r){return r.json();})"
+			+   ".then(function(r){"
+			+     "if(r.success){imported++;console.log('DC Sync: импортировано диалогов: '+imported+' (контакт '+c+')');}"
+			+     "else{console.warn('DC Sync: ошибка контакта '+c+': '+r.data);}"
+			+   "})"
+			+   ".catch(function(e){console.error('DC Sync: ошибка отправки:',e);});"
+			+ "}";
+
+		// ── Regex to match Dating.com message API URLs ────────────────────────────
+		var reFrag = "/api\\.dating\\.com\\/dialogs\\/messages\\/(\\d+):(\\d+)/";
+
+		// ── Build the full bookmarklet IIFE ───────────────────────────────────────
+		var code = "(function(){"
+			// Guard: don't install twice
+			+ "if(window.__dcSyncActive){alert('DC Sync уже активен. Открывайте чаты Dating.com.');return;}"
+			+ "window.__dcSyncActive=true;"
+			+ "var W="+W+",M="+M+",T="+T+";"
+			+ "var RE="+reFrag+";"
+			+ "var imported=0;"
+			+ sndFn
+
+			// ── Patch window.fetch ───────────────────────────────────────────────
+			+ "var _f=window.fetch;"
+			+ "window.fetch=function(input,init){"
+			+   "var url=typeof input==='string'?input:(input&&input.url?input.url:'');"
+			+   "var p=_f.apply(this,arguments);"
+			+   "var m=url.match(RE);"
+			+   "if(m){"
+			+     "p=p.then(function(resp){"
+			+       "resp.clone().json().then(function(d){snd(m[1],m[2],d);}).catch(function(){});"
+			+       "return resp;"
+			+     "});"
+			+   "}"
+			+   "return p;"
+			+ "};"
+
+			// ── Patch XMLHttpRequest ─────────────────────────────────────────────
+			+ "var _o=XMLHttpRequest.prototype.open;"
+			+ "XMLHttpRequest.prototype.open=function(method,url){"
+			+   "this._dcUrl=typeof url==='string'?url:'';"
+			+   "return _o.apply(this,arguments);"
+			+ "};"
+			+ "var _s=XMLHttpRequest.prototype.send;"
+			+ "XMLHttpRequest.prototype.send=function(){"
+			+   "var x=this;"
+			+   "if(x._dcUrl){"
+			+     "var m=x._dcUrl.match(RE);"
+			+     "if(m){x.addEventListener('load',function(){if(x.status===200){try{snd(m[1],m[2],JSON.parse(x.responseText));}catch(e){}}});}"
+			+   "}"
+			+   "return _s.apply(this,arguments);"
+			+ "};"
+
+			// ── Fallback: try any URLs already in the performance buffer ─────────
+			+ "var es=performance.getEntriesByType?performance.getEntriesByType('resource'):[];"
+			+ "var seen={};"
+			+ "for(var i=0;i<es.length;i++){"
+			+   "var em=es[i].name.match(RE);"
+			+   "if(em&&!seen[em[1]+':'+em[2]]){"
+			+     "seen[em[1]+':'+em[2]]=1;"
+			+     "(function(o,c){"
+			+       "fetch('https://api.dating.com/dialogs/messages/'+o+':'+c+'?omit=0&select=50',"
+			+             "{credentials:'include',headers:{'Accept':'application/json'}})"
+			+       ".then(function(r){"
+			+         "if(!r.ok){"
+			+           "if(r.status===401)"
+			+             "console.log('DC Sync: прямой запрос отклонён (401) для контакта '+c+'. Откройте чат заново — перехватчик импортирует автоматически.');"
+			+           "throw new Error('HTTP '+r.status);"
+			+         "}"
+			+         "return r.json();"
+			+       "})"
+			+       ".then(function(d){snd(o,c,d);})"
+			+       ".catch(function(){});"
+			+     "})(em[1],em[2]);"
+			+   "}"
+			+ "}"
+
+			+ "alert('DC Sync включён. Теперь откройте нужные чаты Dating.com.');"
 			+ "})();";
 
 		elLink.href = 'javascript:' + encodeURIComponent(code);
