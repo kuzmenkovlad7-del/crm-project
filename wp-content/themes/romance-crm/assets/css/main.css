@@ -2552,3 +2552,21 @@ p {
   background: #fce8f3;
   color: #8b1a5a;
 }
+
+/* Dating.com sync panel */
+.dc-sync-panel {
+  border-color: #f8bbd0 !important;
+  background: #fef6fa;
+}
+.dc-sync-steps {
+  font-size: 13px;
+  padding-left: 18px;
+}
+.dc-sync-steps li {
+  margin-bottom: 5px;
+}
+.dc-bookmarklet {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-drag: element;
+}
