@@ -174,7 +174,7 @@ function dc_handle_import_messages_ajax() {
 	$contact_id   = sanitize_text_field( $_POST['contact_id'] ?? '' );
 	$messages_raw = isset( $_POST['messages'] ) ? wp_unslash( $_POST['messages'] ) : '[]';
 
-	if ( ! $operator_id || ! $contact_id ) {
+	if ( $operator_id === '' || $contact_id === '' ) {
 		wp_send_json_error( 'Отсутствуют operator_id или contact_id.' );
 	}
 
