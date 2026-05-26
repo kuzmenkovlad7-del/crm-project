@@ -65,17 +65,22 @@ Navigate to the Dating.com login page and complete a normal manual login.
 
 After login, navigate to the inbox or chat list page.
 
-- [ ] **Chats/inbox page URL:**  
-  `_______________________________________`
+- [x] **Chats/inbox page URL:**  
+  `https://dating.com/` (SPA — inbox loaded within the same app)
 
-- [ ] **Does the page load the contact list via a separate XHR/fetch request?**  
-  ☐ Yes — note URL below  
-  ☐ No — list is embedded in the initial HTML page (no XHR)
+- [x] **API base URL confirmed:**  
+  `https://api.dating.com`
+
+- [x] **Logged-in operator user ID visible:**  
+  `2108604` (appears in request URLs)
+
+- [x] **Does the page load the contact list via a separate XHR/fetch request?**  
+  ☑ Yes — contact/chat data loaded via XHR to `https://api.dating.com` endpoints
 
 - [ ] **Does the page auto-refresh / poll for new messages?**  
   ☐ Yes — every `_____` seconds, via: `_______________________________________`  
   ☐ No / uses WebSocket instead  
-  ☐ Unknown
+  ☑ Unknown — pending screenshot of Headers/Preview
 
 ---
 
@@ -83,12 +88,28 @@ After login, navigate to the inbox or chat list page.
 
 Watch the Network tab while the chat/inbox page loads or auto-refreshes.
 
-- [ ] **Endpoint URL for fetching the contact list:**  
-  `_______________________________________`
+> **Observed so far** (opening one contact triggered all of the following — need screenshots  
+> to confirm which carries the contact list vs. other data):
+>
+> | Request (partial URL) | Likely purpose |
+> |---|---|
+> | `2108604:4046930031?omit=0&select=50` | **Message thread** between operator `2108604` and contact `4046930031`; `select=50` probably means fetch last 50 messages |
+> | `4046930031` | **Contact profile** for user `4046930031` |
+> | `check` | Session/auth check — to be confirmed |
+> | `chat-opened` | Analytics/event ping — likely not useful |
+> | `sets?attended=4046930031&containerType=message…` | Marks contact as attended/seen — possible status update |
+> | `profile` | Own operator profile fetch |
+> | `unseen` | **Unread/unseen count** — likely useful for badge |
+> | `cheers` / `suggests` / `detection` | Recommendations/analytics — not useful for CRM |
+> | `/annals/` and `/events/` URLs | Analytics only — skip |
+
+- [ ] **Endpoint URL for fetching the contact list (inbox list):**  
+  `_______________________________________`  
+  *(Awaiting screenshot — likely a separate request that loads all conversations)*
 
 - [ ] **HTTP method:** ☐ GET  ☐ POST
 
-- [ ] **Request parameters / payload** (query string or POST body):  
+- [ ] **Request parameters / payload:**  
   `_______________________________________`
 
 - [ ] **Response format:**  
@@ -118,8 +139,9 @@ Watch the Network tab while the chat/inbox page loads or auto-refreshes.
 
 Click on one contact to open their chat. Watch Network tab.
 
-- [ ] **Endpoint URL for loading a single contact's info** (name, photo, profile):  
-  `_______________________________________`
+- [x] **Candidate endpoint for contact profile** (confirmed firing on chat open):  
+  `https://api.dating.com/…/4046930031`  
+  *(full path + response fields needed from screenshot)*
 
 - [ ] **HTTP method:** ☐ GET  ☐ POST
 
@@ -146,13 +168,13 @@ Click on one contact to open their chat. Watch Network tab.
 
 With a chat open, watch the Network tab for the message history request.
 
-- [ ] **Endpoint URL for loading message history:**  
-  `_______________________________________`
+- [x] **Candidate endpoint for message thread** (confirmed firing on chat open):  
+  `https://api.dating.com/…/2108604:4046930031?omit=0&select=50`  
+  - URL structure: `{operator_id}:{contact_id}?omit={offset}&select={count}`  
+  - `select=50` → fetch 50 messages; `omit=0` → start from most recent  
+  *(full base path + response fields needed from screenshot)*
 
 - [ ] **HTTP method:** ☐ GET  ☐ POST
-
-- [ ] **Request parameters** (e.g. chat_id, user_id, page/offset):  
-  `_______________________________________`
 
 - [ ] **Response format:** ☐ JSON  ☐ HTML  ☐ Other: `_______`
 
@@ -163,6 +185,7 @@ With a chat open, watch the Network tab for the message history request.
 
 - [ ] **Are message poll/refresh requests visible?** (auto-check for new messages)  
   ☐ Yes — endpoint: `_______________________________` every `___` s  
+  ☑ Candidate: `unseen` endpoint — pending screenshot to confirm  
   ☐ No / WebSocket
 
 ---
