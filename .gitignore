@@ -1,0 +1,14 @@
+wp-config.php
+*.sql
+*.sql.gz
+*.tar.gz
+*.zip
+.env
+.env.*
+.DS_Store
+wp-content/uploads/
+wp-content/cache/
+wp-content/upgrade/
+wp-content/uploads/cookies/
+node_modules/
+vendor/
