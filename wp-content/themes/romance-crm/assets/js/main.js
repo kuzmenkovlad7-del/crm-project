@@ -160,28 +160,31 @@ $(function () {
           $this.data("favorite", favorite);
 
           if (isDC) {
-            // Keep HTML attribute in sync so CSS [data-favorite="1"] selector works
+            // Sync HTML attr for CSS [data-favorite="1"] selector
             $this.attr("data-favorite", favorite);
-
+            // Optimistic class update for instant visual feedback
             if (favorite == "1") {
-              // Instant: mark row and move to top of list
               $dcRow.addClass("is-favorite");
-              $(".contact-list .response").prepend($dcRow);
             } else {
-              // Instant: unmark row, then refresh list to restore timestamp order
               $dcRow.removeClass("is-favorite");
-              $.ajax({
-                url: ajaxurl,
-                type: "POST",
-                dataType: "json",
-                data: { action: "get_contact_list", id: modelId },
-                success: function (r) {
-                  if (r.success) {
-                    $(".contact-list .response").html(r.data);
-                  }
-                },
-              });
             }
+            // Server refresh for correct row order.
+            // Using DOM prepend on $dcRow is unreliable: fetchContactList()
+            // polls every 15 s and replaces the list HTML, detaching $dcRow
+            // so any prepend on a stale reference creates duplicates.
+            // A single get_contact_list call after the meta update always
+            // returns favorites-first and resolves any in-flight poll race.
+            $.ajax({
+              url: ajaxurl,
+              type: "POST",
+              dataType: "json",
+              data: { action: "get_contact_list", id: modelId },
+              success: function (r) {
+                if (r.success) {
+                  $(".contact-list .response").html(r.data);
+                }
+              },
+            });
           }
         } else {
           alert("Ошибка: " + response.data);
