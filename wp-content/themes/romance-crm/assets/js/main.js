@@ -134,10 +134,14 @@ $(function () {
     e.preventDefault();
 
     var $this = $(this);
-    var user_id = $this.data("user_id"); // в твоём HTML data-id — здесь правильный атрибут
+    var user_id = $this.data("user_id");
     var favorite = $this.data("favorite");
 
     favorite = favorite == "1" ? "0" : "1";
+
+    // Detect DC contact rows by their wrapper class
+    var $dcRow = $this.closest(".dc-contact");
+    var isDC = $dcRow.length > 0;
 
     $.ajax({
       url: ajaxurl,
@@ -151,10 +155,34 @@ $(function () {
       },
       success: function (response) {
         if (response.success) {
-          // Обновляем иконку и атрибут
           var icon = favorite == "1" ? "★" : "☆";
           $this.find(".favorite-indicator").html(icon);
           $this.data("favorite", favorite);
+
+          if (isDC) {
+            // Keep HTML attribute in sync so CSS [data-favorite="1"] selector works
+            $this.attr("data-favorite", favorite);
+
+            if (favorite == "1") {
+              // Instant: mark row and move to top of list
+              $dcRow.addClass("is-favorite");
+              $(".contact-list .response").prepend($dcRow);
+            } else {
+              // Instant: unmark row, then refresh list to restore timestamp order
+              $dcRow.removeClass("is-favorite");
+              $.ajax({
+                url: ajaxurl,
+                type: "POST",
+                dataType: "json",
+                data: { action: "get_contact_list", id: modelId },
+                success: function (r) {
+                  if (r.success) {
+                    $(".contact-list .response").html(r.data);
+                  }
+                },
+              });
+            }
+          }
         } else {
           alert("Ошибка: " + response.data);
         }
@@ -448,7 +476,22 @@ $(function () {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
+  // Leave-page guard — active ONLY while broadcast is running
+  function spamBeforeUnload(e) {
+    e.preventDefault();
+    e.returnValue = "Рассылка активна. Покинуть страницу?";
+    return "Рассылка активна. Покинуть страницу?";
+  }
+  function setSpamActive(active) {
+    if (active) {
+      window.addEventListener("beforeunload", spamBeforeUnload);
+    } else {
+      window.removeEventListener("beforeunload", spamBeforeUnload);
+    }
+  }
+
   function enableControls() {
+    setSpamActive(false);
     $("#spamModal .writemessage button.send-btn").removeAttr("disabled");
     $("#spamModal .writemessage textarea").removeAttr("disabled");
     $("#pauseBtn").attr("disabled", "disabled");
@@ -479,6 +522,7 @@ $(function () {
       isStopped = false;
 
       disableControls();
+      setSpamActive(true);
       currentPage = 1;
       $(".progress-status").html(""); // очистить статус
       loadPageAndSend(currentPage);

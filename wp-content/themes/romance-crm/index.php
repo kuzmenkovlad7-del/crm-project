@@ -421,31 +421,9 @@ if ( !is_user_logged_in() ) : ?>
 						</div>
 					</div>
 				</div>
-				<?php if ( $model_source === 'dating_com' ) : ?>
+			<?php if ( $model_source === 'dating_com' ) : ?>
 					<?= dc_render_sync_panel( get_the_ID() ); ?>
 				<?php endif; ?>
-				<script>
-					window.addEventListener("beforeunload", function (e) {
-						const confirmationMessage = "Вы уверены, что хотите покинуть эту страницу?";
-						e.preventDefault(); // Необязательно, но рекомендуется для некоторых браузеров
-						e.returnValue = confirmationMessage; // Стандарт для большинства браузеров
-						return confirmationMessage; // Для старых браузеров
-					});
-					document.addEventListener('DOMContentLoaded', function () {
-						document.querySelectorAll('a').forEach(link => {
-							link.addEventListener('click', function (e) {
-								// Пропустить ссылки с id goFavorite и goRemove
-								if (link.id === 'goFavorite' || link.id === 'goRemove' || link.classList.contains('dc-bookmarklet')) {
-									return;
-								}
-
-								if (!confirm("Вы уверены, что хотите покинуть страницу?")) {
-									e.preventDefault();
-								}
-							});
-						});
-					});
-				</script>
 			<?php } ?>
 		</div>
 	</section>
