@@ -213,27 +213,71 @@ and delegate to `dc_*` functions from `dating-com-functions.php`.
 
 ---
 
-## 8. Phase 2 — Server-Side Contact List (BLOCKED)
+## 8. Phase 2 — Automatic Background Sync (Recommended approach)
 
-Cannot proceed until:
+### Why server-side auto-sync is not possible now
 
-| Blocker | Needed for | Reference |
-|---|---|---|
-| Login / session method confirmed | `dc_authenticate()` — cookie file creation | `DATING_COM_BROWSER_INSPECTION.md` Section 1 |
-| Contact list / inbox endpoint confirmed | Full contact list without manual browsing | `DATING_COM_BROWSER_INSPECTION.md` Section 3 |
+Dating.com's API enforces session-bound tokens that are injected by the browser-side
+JS at request time. These tokens are not cookies and are not visible in DevTools network
+headers as static values — they change per request. Server-side cURL requests without a
+live browser session always return **401 Unauthorized**, even with a valid cookie file.
 
-If an official operator API or confirmed login flow exists, Phase 2 implements:
-- `dc_authenticate()` with stored credentials from ACF `email_model` / `pass_model`
-- `dc_handle_get_contact_list()` using the confirmed endpoint
-- Automatic re-auth on session expiry
+This means:
+- `dc_authenticate()` cannot be implemented server-side until Dating.com provides an
+  official operator API or a documented token-exchange flow.
+- There is no known endpoint for fetching the contact/inbox list from the server.
+
+### Recommended Phase 2: Browser helper / Chrome Extension
+
+The most viable path to automatic background sync is a lightweight browser extension
+(Chrome / Firefox) that:
+
+1. Runs persistently in the operator's browser profile.
+2. Intercepts `api.dating.com/dialogs/messages/` responses using the WebRequest API
+   (same approach as the current bookmarklet, but automatic and background).
+3. POSTs sanitized message data to `dc_import_messages` on a configurable interval or
+   on each new message event.
+4. Authenticates to the CRM using the per-model import token (same as now — no WP session
+   needed from the extension).
+
+This approach:
+- Requires zero changes to Dating.com's flow.
+- Does not require server-side auth or any bypass of anti-bot protection.
+- Keeps Dating.com session tokens inside the browser — they never reach our server.
+
+Cannot be implemented as PHP/WordPress code alone — requires a separate browser extension
+project. Scope: separate deliverable, estimated 2–3 days.
+
+### Blocked items (need Dating.com cooperation or official API)
+
+| Blocker | Needed for |
+|---|---|
+| Official Dating.com operator API | True server-side sync without browser |
+| Documented token-exchange flow | `dc_authenticate()` cookie file creation |
+| Confirmed inbox/contact-list endpoint | Auto contact list without browsing |
 
 ---
 
-## 9. Phase 3 — Send Message (DEFERRED)
+## 9. Phase 3 — CRM Message Queue + Browser-Session Sending (DEFERRED)
 
-Requires separate confirmation of the send endpoint (Section 6 of inspection checklist).
-Will be a separate task — `dc_send_message()` in `dating-com-functions.php` + routing in
-`handle_send_message()`. Not to be implemented until confirmed.
+Sending messages through Dating.com from the CRM requires the same browser-session
+token that blocks server-side API calls. Recommended architecture when this is needed:
+
+1. **CRM message queue**: operator composes messages in the CRM; they are stored in a
+   queue in post meta or a custom table.
+2. **Browser extension** (Phase 2 prerequisite): the extension reads the queue and
+   sends messages through the operator's live Dating.com browser session, using the
+   same request pattern as the Dating.com web app.
+3. **Delivery confirmation**: extension POSTs send status back to CRM via
+   `dc_import_messages` or a new `dc_confirm_sent` endpoint.
+
+This design:
+- Never stores Dating.com session tokens on the server.
+- Does not bypass captcha, Akamai/Cloudflare, or any bot protection.
+- Does not require headless browser or scraping.
+
+Will be a separate task. Requires Phase 2 (browser extension) as a prerequisite.
+Not to be implemented until the extension architecture is confirmed.
 
 ---
 
