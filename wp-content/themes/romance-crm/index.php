@@ -189,26 +189,43 @@ if ( !is_user_logged_in() ) : ?>
 			<?php if(is_front_page()) { ?>
 				<h3 class="text-center mb-5">Список моделей</h3>
 				<form class="search d-flex gap-2 mb-4" action="" method="get">
-					<input type="text" name="search" value="<?php if (!empty($_GET['search'])) {echo $_GET['search'];} ?>" required placeholder="Введите ID модели">
+					<input type="hidden" name="source" value="<?php echo esc_attr( $_GET['source'] ?? 'all' ); ?>">
+					<input type="text" name="search" value="<?php if (!empty($_GET['search'])) {echo esc_attr($_GET['search']);} ?>" required placeholder="Введите ID модели">
 					<button type="submit">Поиск</button>
-					<?php 
+					<?php
 						if (!empty($_GET['search'])) {
-							echo '<a style="margin-top: auto;margin-bottom: auto;" href="'. home_url() .'" class="text-dark">Очистить поиск</a>';
-						} 
+							$clear_url = home_url( '/' . ( ! empty( $_GET['source'] ) && $_GET['source'] !== 'all' ? '?source=' . esc_attr( $_GET['source'] ) : '' ) );
+							echo '<a style="margin-top: auto;margin-bottom: auto;" href="'. esc_url( $clear_url ) .'" class="text-dark">Очистить поиск</a>';
+						}
 					?>
 				</form>
+				<?php
+				$source_filter = sanitize_text_field( $_GET['source'] ?? 'all' );
+				if ( ! in_array( $source_filter, [ 'all', 'romance_compass', 'dating_com' ], true ) ) {
+					$source_filter = 'all';
+				}
+				$search_qs = ! empty( $_GET['search'] ) ? '&search=' . urlencode( $_GET['search'] ) : '';
+				?>
+				<div class="source-filter-tabs mb-3">
+					<a href="<?= esc_url( home_url( '/?source=all' . $search_qs ) ); ?>"
+					   class="filter-btn<?= $source_filter === 'all' ? ' active-all' : ''; ?>">Все</a>
+					<a href="<?= esc_url( home_url( '/?source=romance_compass' . $search_qs ) ); ?>"
+					   class="filter-btn<?= $source_filter === 'romance_compass' ? ' active-rc' : ''; ?>">RomanceCompass</a>
+					<a href="<?= esc_url( home_url( '/?source=dating_com' . $search_qs ) ); ?>"
+					   class="filter-btn<?= $source_filter === 'dating_com' ? ' active-dc' : ''; ?>">Dating.com</a>
+				</div>
 				<div class="models d-grid gap-3" id="model-list">
 				<?php
 				$current_user = wp_get_current_user();
 				$current_user_id = get_current_user_id();
-				
+
 				// Базовый запрос (для подсчёта общего количества постов)
 				$args = array(
 						'post_type' => 'model',
 						'posts_per_page' => -1,
 						'meta_query' => array()
 				);
-				
+
 				if (!in_array('manager', (array) $current_user->roles) && !in_array('administrator', (array) $current_user->roles)) {
 						$args['meta_query'][] = array(
 								'key' => 'user_model',
@@ -216,7 +233,7 @@ if ( !is_user_logged_in() ) : ?>
 								'compare' => 'LIKE'
 						);
 				}
-				
+
 				if (!empty($_GET['search'])) {
 						$search_value = sanitize_text_field($_GET['search']);
 						$args['meta_query'][] = array(
@@ -224,6 +241,27 @@ if ( !is_user_logged_in() ) : ?>
 								'value' => $search_value,
 								'compare' => '='
 						);
+				}
+
+				if ( $source_filter === 'dating_com' ) {
+					$args['meta_query'][] = array(
+						'key'     => 'source_model',
+						'value'   => 'dating_com',
+						'compare' => '=',
+					);
+				} elseif ( $source_filter === 'romance_compass' ) {
+					$args['meta_query'][] = array(
+						'relation' => 'OR',
+						array(
+							'key'     => 'source_model',
+							'value'   => 'romance_compass',
+							'compare' => '=',
+						),
+						array(
+							'key'     => 'source_model',
+							'compare' => 'NOT EXISTS',
+						),
+					);
 				}
 				
 				$total_query = new WP_Query($args);
@@ -283,7 +321,8 @@ if ( !is_user_logged_in() ) : ?>
 						style="margin: auto;display: block;"
 						data-offset="10"
 						data-total="<?= $total_posts ?>"
-						data-search="<?= esc_attr($_GET['search'] ?? '') ?>">
+						data-search="<?= esc_attr($_GET['search'] ?? '') ?>"
+						data-source="<?= esc_attr($source_filter) ?>">
 						Показать ещё
 					</button>
 				<?php endif; ?>

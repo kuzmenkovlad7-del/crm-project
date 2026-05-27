@@ -453,9 +453,13 @@ function handle_toggle_favorite() {
 			wp_send_json_error('Неверные данные');
 	}
 
-	// Dating.com: favorites endpoint not yet confirmed — not implemented in Phase 1.
+	// Dating.com: favorites stored locally in post meta, no RC API call needed.
 	if ( get_field('source_model', intval($_POST['id'])) === 'dating_com' ) {
-		wp_send_json_error('Dating.com: избранное не поддерживается в текущей версии.');
+		dc_handle_toggle_favorite(
+			intval( $_POST['id'] ),
+			sanitize_text_field( $_POST['user_id'] ?? '' )
+		);
+		return;
 	}
 
 	$user_id = intval($_POST['user_id']);
@@ -899,6 +903,7 @@ add_action('wp_ajax_nopriv_load_more_models', 'load_more_models_callback');
 function load_more_models_callback() {
     $offset = intval($_POST['offset']);
     $search = sanitize_text_field($_POST['search']);
+    $source = sanitize_text_field($_POST['source'] ?? 'all');
     $current_user = wp_get_current_user();
     $current_user_id = get_current_user_id();
 
@@ -922,6 +927,27 @@ function load_more_models_callback() {
             'key' => 'id_model',
             'value' => $search,
             'compare' => '='
+        );
+    }
+
+    if ( $source === 'dating_com' ) {
+        $args['meta_query'][] = array(
+            'key'     => 'source_model',
+            'value'   => 'dating_com',
+            'compare' => '=',
+        );
+    } elseif ( $source === 'romance_compass' ) {
+        $args['meta_query'][] = array(
+            'relation' => 'OR',
+            array(
+                'key'     => 'source_model',
+                'value'   => 'romance_compass',
+                'compare' => '=',
+            ),
+            array(
+                'key'     => 'source_model',
+                'compare' => 'NOT EXISTS',
+            ),
         );
     }
 

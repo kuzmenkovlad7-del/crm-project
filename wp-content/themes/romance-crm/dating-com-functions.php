@@ -142,6 +142,11 @@ function dc_get_stored_messages( $model_id, $contact_id ) {
 	return is_array( $v ) ? $v : [];
 }
 
+function dc_get_favorite_contacts( $model_id ) {
+	$v = get_post_meta( $model_id, '_dc_favorite_contacts', true );
+	return is_array( $v ) ? $v : [];
+}
+
 // ─────────────────────────────────────────────
 // AJAX — Import messages (called by bookmarklet)
 // ─────────────────────────────────────────────
@@ -277,45 +282,97 @@ function dc_handle_import_messages_ajax() {
 }
 
 // ─────────────────────────────────────────────
+// Favorites toggle (local post meta, no RC API call)
+// ─────────────────────────────────────────────
+
+/**
+ * Called from handle_toggle_favorite() in functions.php when source_model === 'dating_com'.
+ * Stores favourite contact IDs in _dc_favorite_contacts post meta.
+ */
+function dc_handle_toggle_favorite( $model_id, $contact_id ) {
+	$contact_id = (string) $contact_id;
+	if ( ! ctype_digit( $contact_id ) ) {
+		wp_send_json_error( 'Некорректный ID контакта.' );
+	}
+	$favorites = dc_get_favorite_contacts( $model_id );
+	if ( in_array( $contact_id, $favorites, true ) ) {
+		$favorites = array_values( array_filter( $favorites, function ( $c ) use ( $contact_id ) {
+			return $c !== $contact_id;
+		} ) );
+		$is_fav = false;
+	} else {
+		$favorites[] = $contact_id;
+		$is_fav      = true;
+	}
+	update_post_meta( $model_id, '_dc_favorite_contacts', $favorites );
+	wp_send_json_success( [ 'favorite' => $is_fav ? '1' : '0' ] );
+}
+
+// ─────────────────────────────────────────────
 // AJAX handler — Contact list (reads local storage)
 // ─────────────────────────────────────────────
 
 function dc_handle_get_contact_list( $id ) {
-	$contacts = dc_get_stored_contacts( $id );
+	$contacts  = dc_get_stored_contacts( $id );
+	$favorites = dc_get_favorite_contacts( $id );
 
 	if ( empty( $contacts ) ) {
 		wp_send_json_success( dc_render_no_contacts_hint() );
 		return;
 	}
 
-	$placeholder = 'https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png';
-	$html = '';
-
+	// Sort: favorites first, then by last_timestamp DESC (already sorted on import)
+	$fav_set  = array_flip( $favorites );
+	$fav_list = [];
+	$reg_list = [];
 	foreach ( $contacts as $c ) {
-		$contact_id  = esc_attr( $c['contact_id'] );
-		$last_text   = esc_html( mb_substr( (string) ( $c['last_message'] ?? '' ), 0, 60 ) );
-		$last_time   = ! empty( $c['last_timestamp'] )
-		             ? esc_html( date( 'd.m H:i', (int) $c['last_timestamp'] ) )
-		             : '';
-		$unread      = (int) ( $c['unread_count'] ?? 0 );
-		$unread_html = $unread > 0
-		             ? '<span class="unread-message" style="color:#007bff;font-weight:bold;">&#9993; x' . $unread . '</span>'
-		             : '';
+		if ( isset( $fav_set[ (string) $c['contact_id'] ] ) ) {
+			$fav_list[] = $c;
+		} else {
+			$reg_list[] = $c;
+		}
+	}
+	$ordered = array_merge( $fav_list, $reg_list );
 
-		$html .= '
-		<div class="contact-card d-flex align-items-center gap-2 mt-2 mb-2">
-			<img src="' . esc_url( $placeholder ) . '" alt="" style="width:30px;height:30px;border-radius:50%;">
-			<div class="d-flex align-items-center justify-content-between" style="width:100%;">
-				<p id="openChat" data-user_id="' . $contact_id . '" data-chat_id="0" class="name mb-0" style="cursor:pointer;">
-					<strong>ID: ' . $contact_id . '</strong>
-					<br><small class="text-muted">' . $last_text . '</small>
-				</p>
-				<p id="openChat" data-user_id="' . $contact_id . '" data-chat_id="0" class="messages mb-0" style="cursor:pointer;text-align:right;">
-					' . $unread_html . '
-					<br><small class="text-muted">' . $last_time . '</small>
-				</p>
-			</div>
-		</div>';
+	$html = '';
+	foreach ( $ordered as $c ) {
+		$cid       = esc_attr( $c['contact_id'] );
+		$last_text = esc_html( mb_substr( (string) ( $c['last_message'] ?? '' ), 0, 70 ) );
+		$last_time = ! empty( $c['last_timestamp'] )
+		           ? esc_html( date( 'd.m H:i', (int) $c['last_timestamp'] ) )
+		           : '';
+		$unread    = (int) ( $c['unread_count'] ?? 0 );
+		$is_fav    = isset( $fav_set[ (string) $c['contact_id'] ] );
+
+		$row_class  = $is_fav ? 'dc-contact is-favorite' : 'dc-contact';
+		$star       = $is_fav ? '★' : '☆';
+		$star_title = $is_fav ? 'Убрать из избранных' : 'В избранные';
+		$fav_val    = $is_fav ? '1' : '0';
+
+		$unread_badge = $unread > 0
+			? '<span class="dc-unread-badge">' . $unread . '</span> '
+			: '';
+
+		$html .= '<div class="' . $row_class . '">'
+		       . '<button class="dc-fav-btn" id="goFavorite"'
+		       .         ' data-user_id="' . $cid . '"'
+		       .         ' data-favorite="' . $fav_val . '"'
+		       .         ' title="' . esc_attr( $star_title ) . '">'
+		       .   '<span class="favorite-indicator">' . $star . '</span>'
+		       . '</button>'
+		       . '<div class="dc-contact-info" id="openChat"'
+		       .     ' data-user_id="' . $cid . '"'
+		       .     ' data-chat_id="0">'
+		       .   '<div class="dc-contact-main">'
+		       .     '<div class="dc-contact-left">'
+		       .       '<span class="dc-contact-id">ID: ' . esc_html( $c['contact_id'] ) . '</span>'
+		       .       $unread_badge
+		       .       '<div class="dc-contact-preview">' . $last_text . '</div>'
+		       .     '</div>'
+		       .     '<div class="dc-contact-time">' . $last_time . '</div>'
+		       .   '</div>'
+		       . '</div>'
+		       . '</div>';
 	}
 
 	wp_send_json_success( $html );
@@ -444,10 +501,10 @@ function dc_render_sync_panel( $id ) {
 		</h6>
 
 		<ol class="dc-sync-steps mb-3">
-			<li>Откройте <a href="https://dating.com" target="_blank" rel="noopener">Dating.com</a> в <strong>этом же браузере</strong> и войдите в аккаунт модели.</li>
-			<li><strong>Сначала запустите DC Sync</strong> — перетащите кнопку ниже в панель закладок и нажмите её, или скопируйте код и вставьте в консоль (F12 → Console). Дождитесь сообщения «DC Sync включён».</li>
-			<li>После активации — откройте <strong>1–10 нужных диалогов</strong> на Dating.com. Помощник автоматически перехватит и импортирует каждый чат.</li>
-			<li>Вернитесь в CRM и нажмите <strong>«Обновить контакты»</strong> ниже.</li>
+			<li>Откройте <a href="https://dating.com" target="_blank" rel="noopener">Dating.com</a> в этом же браузере и войдите в аккаунт модели.</li>
+			<li>Запустите DC Sync один раз: перетащите кнопку ниже в закладки и нажмите её — или скопируйте код кнопкой «Скопировать» и вставьте в консоль браузера (F12 → Console → Enter). Браузер покажет подтверждение.</li>
+			<li>Открывайте нужные диалоги в Dating.com. Помощник автоматически импортирует каждый открытый чат.</li>
+			<li>Вернитесь в CRM и нажмите <strong>«Обновить контакты»</strong>.</li>
 		</ol>
 
 		<div class="d-flex gap-2 flex-wrap mb-2 align-items-center">

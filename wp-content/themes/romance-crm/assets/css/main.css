@@ -2570,3 +2570,80 @@ p {
   user-select: none;
   -webkit-user-drag: element;
 }
+
+/* ── Source filter tabs ──────────────────────────────────────────── */
+.source-filter-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.source-filter-tabs .filter-btn {
+  display: inline-block;
+  font-size: 13px;
+  padding: 4px 16px;
+  border-radius: 20px;
+  text-decoration: none;
+  border: 1px solid #dee2e6;
+  color: #495057;
+  background: #fff;
+  transition: background 0.15s, color 0.15s;
+}
+.source-filter-tabs .filter-btn:hover { background: #f8f9fa; color: #212529; }
+.source-filter-tabs .filter-btn.active-all { background: #6c757d; color: #fff; border-color: #6c757d; }
+.source-filter-tabs .filter-btn.active-rc  { background: #2d6a2d; color: #fff; border-color: #2d6a2d; }
+.source-filter-tabs .filter-btn.active-dc  { background: #8b1a5a; color: #fff; border-color: #8b1a5a; }
+
+/* ── DC contact rows ─────────────────────────────────────────────── */
+.dc-contact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #f0c0d8;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #fff;
+}
+.dc-contact.is-favorite {
+  border-color: #e91e8c;
+  background: #fef6fa;
+}
+.dc-fav-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  color: #ccc;
+  flex-shrink: 0;
+}
+.dc-fav-btn[data-favorite="1"] .favorite-indicator,
+.dc-contact.is-favorite .dc-fav-btn .favorite-indicator { color: #e91e8c; }
+.dc-fav-btn:hover .favorite-indicator { color: #e91e8c; }
+.dc-contact-info { flex: 1; cursor: pointer; min-width: 0; }
+.dc-contact-main { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.dc-contact-left { min-width: 0; flex: 1; }
+.dc-contact-id { font-size: 13px; font-weight: 600; }
+.dc-contact-preview {
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  margin-top: 2px;
+}
+.dc-contact-time { font-size: 11px; color: #aaa; white-space: nowrap; flex-shrink: 0; padding-top: 2px; }
+.dc-unread-badge {
+  display: inline-block;
+  background: #e91e8c;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 5px;
+  line-height: 16px;
+  vertical-align: middle;
+  margin-left: 4px;
+}

@@ -69,6 +69,7 @@ $(function () {
     var offset = parseInt($button.data("offset"));
     var total = parseInt($button.data("total"));
     var search = $button.data("search");
+    var source = $button.data("source") || "all";
 
     $button.prop("disabled", true).text("Загрузка...");
 
@@ -79,6 +80,7 @@ $(function () {
         action: "load_more_models",
         offset: offset,
         search: search,
+        source: source,
       },
       success: function (response) {
         if ($.trim(response) !== "") {
