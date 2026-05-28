@@ -33,6 +33,65 @@ $(function () {
     });
   }
 
+  // ── Dating.com chat polling (5 s, smart scroll, sound on new inbound) ────
+  var dcChatInterval = null;
+
+  function checkDCMessages() {
+    var $chatMsgs = $("#chatModalContent .chat-messages");
+    if (!$chatMsgs.length || $chatMsgs.data("source") !== "dating_com") return;
+
+    var user_id = $chatMsgs.data("user_id");
+
+    // Remember scroll position before replace
+    var $scrollEl = $("#chatModal .modal-body");
+    var wasNearBottom = false;
+    if ($scrollEl.length) {
+      var sh = $scrollEl[0].scrollHeight;
+      var st = $scrollEl.scrollTop();
+      var ch = $scrollEl[0].clientHeight;
+      wasNearBottom = sh - st - ch < 80;
+    }
+
+    // Count inbound messages before update
+    var prevInbound = $("#chatModalContent .chat-message.text-start").length;
+
+    $.ajax({
+      url: ajaxurl,
+      type: "POST",
+      dataType: "json",
+      data: { action: "check_message", user_id: user_id, chat_id: 0, id: modelId },
+      success: function (response) {
+        if (!response.success) return;
+
+        var $parsed = $(response.data);
+        var newInbound = $parsed.find(".chat-message.text-start").length;
+        if ($parsed.is(".chat-message.text-start")) newInbound++;
+
+        $("#chatModalContent .messages").html(response.data);
+
+        if (newInbound > prevInbound && window.crmNotifySound) {
+          window.crmNotifySound.play().catch(function () {});
+        }
+
+        if (wasNearBottom && $scrollEl.length) {
+          $scrollEl.scrollTop($scrollEl[0].scrollHeight);
+        }
+      },
+    });
+  }
+
+  function startDCChatPolling() {
+    stopDCChatPolling();
+    dcChatInterval = setInterval(checkDCMessages, 5000);
+  }
+
+  function stopDCChatPolling() {
+    if (dcChatInterval) {
+      clearInterval(dcChatInterval);
+      dcChatInterval = null;
+    }
+  }
+
   window.checkOnlineModel = function (modelId) {
     $.ajax({
       url: ajaxurl,
@@ -254,6 +313,10 @@ $(function () {
       success: function (response) {
         if (response.success) {
           $("#chatModalContent").html(response.data);
+          // Start 5 s DC polling if this is a Dating.com chat
+          if ($("#chatModalContent .chat-messages[data-source='dating_com']").length) {
+            startDCChatPolling();
+          }
         } else {
           $("#chatModalContent").html(
             '<div class="text-danger">Ошибка: ' + response.data + "</div>"
@@ -642,6 +705,7 @@ $(function () {
   // Очистить интервал при закрытии модалки
   $("#chatModal").on("hidden.bs.modal", function () {
     clearInterval(chatInterval);
+    stopDCChatPolling();
   });
 
   function logSpam(stype) {

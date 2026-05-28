@@ -310,8 +310,9 @@ function script_get_contact_list() {
 	<script>
 			var modelId = <?php echo intval(get_the_ID()); ?>;
 			jQuery(document).ready(function($) {
-					const notificationSound = new Audio('<?php echo home_url(); ?>/wp-content/themes/romance-crm/assets/notify.mp3');
+					window.crmNotifySound = new Audio('<?php echo home_url(); ?>/wp-content/themes/romance-crm/assets/notify.mp3');
 					let lastUnreadCount = 0;
+					var dcContactListInitialLoad = true;
 
 					if (Notification.permission !== "granted") {
 							Notification.requestPermission();
@@ -321,10 +322,24 @@ function script_get_contact_list() {
 							if (Notification.permission === "granted") {
 									new Notification(title, { body: message });
 							}
-							notificationSound.play().catch(e => console.log("Sound play failed:", e));
+							window.crmNotifySound.play().catch(e => console.log("Sound play failed:", e));
 					}
 
 					function fetchContactList() {
+							// Snapshot DC contact state before replace (skipped on first load)
+							var dcSnapshot = {};
+							if (!dcContactListInitialLoad) {
+									$('.dc-contact').each(function() {
+											var cid = String($(this).data('contact_id'));
+											if (cid) {
+													dcSnapshot[cid] = {
+															last_ts: parseInt($(this).data('last_ts')) || 0,
+															unread:  parseInt($(this).data('unread'))  || 0
+													};
+											}
+									});
+							}
+
 							$.ajax({
 									url: ajaxurl,
 									type: 'POST',
@@ -333,6 +348,29 @@ function script_get_contact_list() {
 									success: function(response) {
 											if (response.success) {
 													$('.contact-list .response').html(response.data);
+
+													// DC new-message detection (skip initial load)
+													if (!dcContactListInitialLoad) {
+															var hasNewDC = false;
+															$('.dc-contact').each(function() {
+																	var $row    = $(this);
+																	var cid     = String($row.data('contact_id'));
+																	var newTs   = parseInt($row.data('last_ts')) || 0;
+																	var newUnrd = parseInt($row.data('unread'))  || 0;
+																	var prev    = dcSnapshot[cid];
+																	if (prev && (newTs > prev.last_ts || newUnrd > prev.unread)) {
+																			$row.addClass('dc-new-message');
+																			hasNewDC = true;
+																			(function($r){ setTimeout(function(){ $r.removeClass('dc-new-message'); }, 4000); })($row);
+																	}
+															});
+															if (hasNewDC) {
+																	window.crmNotifySound.play().catch(function(){});
+															}
+													}
+													dcContactListInitialLoad = false;
+
+													// RC unread detection (unchanged)
 													let currentUnread = 0;
 													$('.unread-message').each(function() {
 															const match = $(this).text().match(/x(\d+)/);
