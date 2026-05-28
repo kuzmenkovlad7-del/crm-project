@@ -2647,3 +2647,13 @@ p {
   vertical-align: middle;
   margin-left: 4px;
 }
+
+/* New-message flash for DC contact rows */
+.dc-contact.dc-new-message {
+  animation: dcFlash 4s ease-out forwards;
+}
+@keyframes dcFlash {
+  0%   { background-color: #ffee58; }
+  25%  { background-color: #fff9c4; }
+  100% { background-color: transparent; }
+}

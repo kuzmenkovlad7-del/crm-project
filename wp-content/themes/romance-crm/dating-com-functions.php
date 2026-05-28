@@ -348,12 +348,17 @@ function dc_handle_get_contact_list( $id ) {
 		$star       = $is_fav ? '★' : '☆';
 		$star_title = $is_fav ? 'Убрать из избранных' : 'В избранные';
 		$fav_val    = $is_fav ? '1' : '0';
+		$last_ts    = (int) ( $c['last_timestamp'] ?? 0 );
 
 		$unread_badge = $unread > 0
 			? '<span class="dc-unread-badge">' . $unread . '</span> '
 			: '';
 
-		$html .= '<div class="' . $row_class . '">'
+		$html .= '<div class="' . $row_class . '"'
+		       . ' data-contact_id="' . $cid . '"'
+		       . ' data-last_ts="' . $last_ts . '"'
+		       . ' data-unread="' . $unread . '"'
+		       . '>'
 		       . '<button class="dc-fav-btn" id="goFavorite"'
 		       .         ' data-user_id="' . $cid . '"'
 		       .         ' data-favorite="' . $fav_val . '"'
@@ -534,6 +539,9 @@ function dc_render_sync_panel( $id ) {
 		          placeholder="Загрузка кода…"></textarea>
 
 		<div id="dc-sync-status" class="text-muted" style="font-size:12px;min-height:18px;"></div>
+		<p class="text-muted mt-2 mb-0" style="font-size:11px;">
+			Живые обновления работают, пока DC Sync активен во вкладке Dating.com.
+		</p>
 	</div>
 
 	<script>
